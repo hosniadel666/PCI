@@ -85,31 +85,12 @@ begin: MAIN
                 4'b0110: begin: START_READ
                     $display("hey iam in read");
                     TRDY <= 1'b0;
+                    AD_RW <= 1'b1;
                     AD_REG <= DEVICE_MEM[1]; // I need to put data on the bus	
-                    AD_RW = 1;
                     TRDY <= 1'b1;
                 end
                 default: $display("ERROR IN CBE");
             endcase
-            // if(CBE == 4'b0111)
-            // begin: START_WRITE
-            //     AD_RW = 0;
-			// 	$display("hey iam in write");
-            //     TRDY <= 1'b0;
-            //     DEVICE_BUF <= AD; // Taking the bus's data
-            //     DEVICE_MEM[INDEX] <= DEVICE_BUF;
-            //     INDEX = INDEX + 1; // why <= doesnot work solved with =
-            //     INDEX = (INDEX > 99)?0: INDEX; // IF I REMOVE FALSE FIELD WHAT WILL HAPPEN
-            //     TRDY <= 1'b1;
-            // end
-            // else if(CBE == 4'b0110)
-            // begin: START_READ
-            //     AD_RW = 1;
-			// 	$display("hey iam in read");
-            //     TRDY <= 1'b0;
-            //     AD_REG <= DEVICE_MEM[1]; // I need to put data on the bus	
-            //     TRDY <= 1'b1;
-            // end
         end
 
     end
