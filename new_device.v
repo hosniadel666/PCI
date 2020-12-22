@@ -7,7 +7,7 @@
 // 2. I was depending that the output would be slow
 //    around the negtive edge but the ouput appears
 //    immediately at the pos edge
-//    may be we should increases the clk 
+//    may be we should increases the clk
 // 3. I didn't do the acutal reading & writing yet
 
 module Device_new(FRAME,
@@ -97,7 +97,7 @@ module Device_new(FRAME,
     // the next section needs to be checked for
     // the turnaround cycle & tri-state or zero
     // for now I think it's fast device select
-    // and I done't konw how to delay it 
+    // and I done't konw how to delay it
     
     // Keep track of the last byte to transfer
     // when the frame asserted up
@@ -138,25 +138,40 @@ module Device_new(FRAME,
     
     /****************** INTERNAL ******************/
     reg [31:0] MEM [0:31]; // Device memory 32 word
-    reg [31:0] BUF; // Device internal buffer
     reg [7:0]  INDEX ;
-    reg [31:0] AD_REG;
-    reg AD_RW;
     
-    reg R;
-    reg W;
-
     /**************** DEVICE INTERFACE ************/
+    parameter READ_OP  = 4'b0110;
+    parameter WRITE_OP = 4'b0111;
     
-    // reg [31:0] DATA_BUFF;
-    // wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
-    // always @(posedge CLK or negedge REST) begin
-    //     if (~REST)
-    //     else
-    //         MEM[INDEX] <= (MEM[INDEX] & ~MASK) | (AD & MASK);
+    // Mask to be used with write opeartion
+    wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
     
-    // end
+    // Siganls to track the current operation
+    wire DATA_WRITE = DEVSEL & (WRITE_OP == COMMAND_BUFF) & ~IRDY & TRDY;
+    wire DATA_READ  = DEVSEL & (READ_OP == COMMAND_BUFF) & ~IRDY & TRDY;
     
+    // Signal to tri-state the AD in case of read opertion
+    reg AD_OUTPUT_EN;
     
+    always @(posedge CLK or negedge REST) begin
+        if (~REST) begin
+            AD_OUTPUT_EN <= 0;
+            INDEX        <= 0;
+        end
+        if (DATA_WRITE) begin
+            INDEX = (INDEX > 31) ? 0 : INDEX;
+            MEM[INDEX] <= (MEM[INDEX] & ~MASK) | (AD & MASK);
+            INDEX = INDEX + 1;
+        end
+        else if (DATA_READ) begin
+            INDEX = (INDEX > 31) ? 0 : INDEX;
+            AD_OUTPUT_EN <= 1 & ~LAST_DATA_TRANSFER;
+            INDEX = INDEX + 1;
+        end
+    end
+    
+    // tri-state the AD to the memey location
+    assign AD = AD_OUTPUT_EN ? MEM[INDEX] : 32'hZZZZZZZZ;
     
 endmodule
