@@ -34,7 +34,11 @@ assign AD_tb = AD_RW_tb? AD_REG_tb: 32'hzzzz_zzzz;
 initial 
 begin 
     CLK_tb = 1;
-	AD_RW_tb = 1;
+    AD_RW_tb = 1;
+    IRDY_tb = 1'b1;
+    AD_REG_tb = 32'h0000FFFF;
+    FRAME_tb = 1'b1;
+    RST_tb = 0;
 end
 
 always
@@ -43,32 +47,37 @@ begin: GENERATE_CLK
     CLK_tb = ~CLK_tb;
 end
 
-initial
-begin
-    IRDY_tb = 1'b1;
-    AD_REG_tb = 32'h0000FFFF;
-    FRAME_tb = 1'b1;
-    RST_tb = 1'b1;
-end
-
-
 initial 
-begin: TEST
+begin: TEST 
+    #5 
+    RST_tb = 1;
 /*################ TEST WRITE OPERATION #################*/
-    #2
+    #10
+    FRAME_tb = 1'b0;
     CBE_tb = 4'b0111; // WRITE OPERATION
-    AD_REG_tb = 32'h0000_0000;
+    AD_REG_tb = 32'h0000_ffff;
+    IRDY_tb = 1'b1;
+    #10
     IRDY_tb = 1'b0;
-    #1
-    AD_REG_tb = 32'h0000_f0f0; // Data 
+    AD_REG_tb = 32'h0000_f0f0; // Data     
+    #10
+FRAME_tb = 1'b1; // last transction
+    #10
+    // turn around cycle
     IRDY_tb = 1'b1;
 
 /*################ TEST READ OPERATION #################*/
-    #2
+    #10
+    FRAME_tb = 1'b0;
     CBE_tb = 4'b0110; // READ OPERATION
-    AD_REG_tb <= 32'h0000_0000;
+    AD_REG_tb = 32'h0000_ffff;
+    #10
     IRDY_tb = 1'b0;
-    #1
+    AD_RW_tb = 0;
+    // #10
+    FRAME_tb = 1;
+
+    #10
     READ_DATA = AD_tb;  
     IRDY_tb = 1'b1;
 

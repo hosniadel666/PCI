@@ -13,7 +13,7 @@ module Device_new_tb();
     reg [3:0] CBE;
     reg IRDY;
     /******************* NET *******************/
-    wire [31: 0] AD;
+    wire [31:0] AD;
     wire TRDY;
     wire DEVSEL;
     
@@ -21,7 +21,8 @@ module Device_new_tb();
     
     reg [31:0] READ_DATA;
     
-    assign AD     = 32'h0000FFFF;
+    // assign AD     = 32'h0000FFFF;
+    // wire AD_EN;
     // assign CBE = 4'b0101;
     initial begin
         CLK   = 1;
@@ -42,9 +43,25 @@ module Device_new_tb();
         #5
         CBE   = 4'b0111; 
         FRAME = 1'b0;
+	// assign AD = 32'h0000FFFF;
+	CBE = 4'b0111;
         #10
         IRDY  = 1'b0;
-        #40
+	// AD = 32'h0000FFF0;
+	CBE = 4'b1111;
+	#10
+        IRDY  = 1'b0;
+	// assign AD = 32'h0000FFF1;
+	CBE = 4'b1111;
+	#10
+        IRDY  = 1'b1;
+	// assign AD = 32'h0000FFF2;
+	CBE = 4'b1111;
+	#10
+        IRDY  = 1'b0;
+	// assign AD = 32'h0000FFF23;
+	CBE = 4'b1111;
+        #10
         FRAME = 1'b1;
         #10
         IRDY = 1'b1;
