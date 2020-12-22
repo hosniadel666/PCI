@@ -3,6 +3,7 @@
 ################################################*/
 
 include "Device.v";
+include "new_device.v";
 
 
 
@@ -21,7 +22,7 @@ wire [31: 0] AD_tb;
 wire TRDY_tb;
 wire DEVSEL_tb;
 
-Device D1(FRAME_tb, CLK_tb, RST_tb, AD_tb, CBE_tb, IRDY_tb, TRDY_tb, DEVSEL_tb);
+Device_new D1(FRAME_tb, CLK_tb, RST_tb, AD_tb, CBE_tb, IRDY_tb, TRDY_tb, DEVSEL_tb);
 
 reg [31: 0]READ_DATA;
 
@@ -45,7 +46,7 @@ end
 initial
 begin
     IRDY_tb = 1'b1;
-    AD_REG_tb = 32'h0000_0000;
+    AD_REG_tb = 32'h0000FFFF;
     FRAME_tb = 1'b1;
     RST_tb = 1'b1;
 end
