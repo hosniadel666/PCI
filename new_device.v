@@ -128,7 +128,7 @@ module Device_new(FRAME,
     reg DEVSEL_BUFF_NEG;
     
     // Asserting DEVSEL down during the transaction or tri-state it
-    assign DEVSEL = DEVSEL_TRANSATION ? ~DEVSEL_BUFF_NEG : 1'b1;
+    assign DEVSEL = DEVSEL_TRANSATION ? ~DEVSEL_BUFF_NEG : 1'bZ;
     
     // Asserting TRDY
     // the same as DEVSEL but we might need to assert it up
@@ -144,7 +144,7 @@ module Device_new(FRAME,
             endcase
     end 
 
-    assign TRDY = DEVSEL_TRANSATION ? ~TRDY_BUFF_NEG : 1'b1;
+    assign TRDY = DEVSEL_TRANSATION ? ~TRDY_BUFF_NEG : 1'bZ;
     
     // Asserting on negtive edge 
     always @(negedge CLK or negedge REST) begin
@@ -187,12 +187,25 @@ module Device_new(FRAME,
         end
         else if (DATA_READ) begin
             INDEX <= (INDEX > 31) ? 0 : INDEX;
-            AD_OUTPUT_EN <= 1 & ~LAST_DATA_TRANSFER;
+            // AD_OUTPUT_EN <= 1 & ~LAST_DATA_TRANSFER;
             INDEX <= INDEX + 1;
         end
     end
+
+    reg [31:0] OUTPUT_BUFFER;
+    always @(negedge CLK or negedge REST) begin
+        if (~REST)
+            OUTPUT_BUFFER = 0;
+        else
+            OUTPUT_BUFFER = MEM[INDEX - 1];
+	
+        if(DATA_READ)
+            AD_OUTPUT_EN = 1;
+        else
+            AD_OUTPUT_EN = 0;
+    end
     
     // tri-state the AD to the memey location
-    assign AD = AD_OUTPUT_EN ? MEM[INDEX] : 32'hZZZZZZZZ;
+    assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
     
 endmodule

@@ -61,7 +61,7 @@ begin: TEST
     IRDY_tb = 1'b0;
     AD_REG_tb = 32'h0000_f0f0; // Data     
     #10
-FRAME_tb = 1'b1; // last transction
+    FRAME_tb = 1'b1; // last transction
     #10
     // turn around cycle
     IRDY_tb = 1'b1;
@@ -74,7 +74,7 @@ FRAME_tb = 1'b1; // last transction
     #10
     IRDY_tb = 1'b0;
     AD_RW_tb = 0;
-    // #10
+    #20
     FRAME_tb = 1;
 
     #10
