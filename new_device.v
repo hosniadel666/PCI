@@ -35,6 +35,10 @@ module Device_new(FRAME,
     
     /**************** PARAMETERS ***************/
     parameter DEVICE_AD = 32'h0000FFFF; // reg [31:0] DEVICE_AD;
+
+    /****************** INTERNAL ******************/
+    reg [31:0] MEM [0:31]; // Device internal memory 32 word
+    reg [7:0]  INDEX ;  // used as a pointer
     
     
     // Keep track of the transations on the bus
@@ -67,6 +71,7 @@ module Device_new(FRAME,
     always @(posedge CLK) begin
         if (TRANSATION_START) begin
             ADRESS_BUFF  <= AD;
+            INDEX = 0; // to be changed to point at the data
             COMMAND_BUFF <= CBE;
         end
     end
@@ -117,9 +122,13 @@ module Device_new(FRAME,
                 1'b1: DEVSEL_BUFF <= DEVSEL_BUFF & ~LAST_DATA_TRANSFER;
             endcase
     end
+
+    // Asserting on negedge
+    reg TRDY_BUFF_NEG;
+    reg DEVSEL_BUFF_NEG;
     
     // Asserting DEVSEL down during the transaction or tri-state it
-    assign DEVSEL = DEVSEL_TRANSATION ? ~DEVSEL_BUFF : 1'bZ;
+    assign DEVSEL = DEVSEL_TRANSATION ? ~DEVSEL_BUFF_NEG : 1'bZ;
     
     // Asserting TRDY
     // the same as DEVSEL but we might need to assert it up
@@ -133,12 +142,24 @@ module Device_new(FRAME,
                 1'b0: TRDY_BUFF <= TARGETED; // fast
                 1'b1: TRDY_BUFF <= TRDY_BUFF & ~LAST_DATA_TRANSFER;
             endcase
-    end
-    assign TRDY = DEVSEL_TRANSATION ? ~TRDY_BUFF : 1'bZ;
+    end 
+
+    assign TRDY = DEVSEL_TRANSATION ? ~TRDY_BUFF_NEG : 1'bZ;
     
-    /****************** INTERNAL ******************/
-    reg [31:0] MEM [0:31]; // Device memory 32 word
-    reg [7:0]  INDEX ;
+    // Asserting on negtive edge 
+    always @(negedge CLK or negedge REST) begin
+        if (~REST) begin
+            TRDY_BUFF_NEG <= 0;
+            DEVSEL_BUFF_NEG <= 0;
+        end
+        else begin
+            TRDY_BUFF_NEG <= TRDY_BUFF;
+            DEVSEL_BUFF_NEG <= DEVSEL_BUFF;
+        end
+    end
+
+    
+    
     
     /**************** DEVICE INTERFACE ************/
     parameter READ_OP  = 4'b0110;
@@ -148,8 +169,8 @@ module Device_new(FRAME,
     wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
     
     // Siganls to track the current operation
-    wire DATA_WRITE = DEVSEL & (WRITE_OP == COMMAND_BUFF) & ~IRDY & TRDY;
-    wire DATA_READ  = DEVSEL & (READ_OP == COMMAND_BUFF) & ~IRDY & TRDY;
+    wire DATA_WRITE = ~DEVSEL & (WRITE_OP == COMMAND_BUFF) & ~IRDY & ~TRDY;
+    wire DATA_READ  = ~DEVSEL & (READ_OP == COMMAND_BUFF) & ~IRDY & ~TRDY;
     
     // Signal to tri-state the AD in case of read opertion
     reg AD_OUTPUT_EN;
@@ -160,18 +181,31 @@ module Device_new(FRAME,
             INDEX        <= 0;
         end
         if (DATA_WRITE) begin
-            INDEX = (INDEX > 31) ? 0 : INDEX;
+            INDEX <= (INDEX > 31) ? 0 : INDEX;
             MEM[INDEX] <= (MEM[INDEX] & ~MASK) | (AD & MASK);
-            INDEX = INDEX + 1;
+            INDEX <= INDEX + 1;
         end
         else if (DATA_READ) begin
-            INDEX = (INDEX > 31) ? 0 : INDEX;
-            AD_OUTPUT_EN <= 1 & ~LAST_DATA_TRANSFER;
-            INDEX = INDEX + 1;
+            INDEX <= (INDEX > 31) ? 0 : INDEX;
+            // AD_OUTPUT_EN <= 1 & ~LAST_DATA_TRANSFER;
+            INDEX <= INDEX + 1;
         end
+    end
+
+    reg [31:0] OUTPUT_BUFFER;
+    always @(negedge CLK or negedge REST) begin
+        if (~REST)
+            OUTPUT_BUFFER = 0;
+        else
+            OUTPUT_BUFFER = MEM[INDEX - 1];
+	
+        if(DATA_READ)
+            AD_OUTPUT_EN = 1;
+        else
+            AD_OUTPUT_EN = 0;
     end
     
     // tri-state the AD to the memey location
-    assign AD = AD_OUTPUT_EN ? MEM[INDEX] : 32'hZZZZZZZZ;
+    assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
     
 endmodule
