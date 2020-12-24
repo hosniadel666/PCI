@@ -35,7 +35,12 @@ module Device_new(FRAME,
     reg [2:0]  INDEX ;  // used as a pointer
     reg DEVICE_READY;
     
-    
+    initial
+	begin
+		$readmemh("ram.mem", MEM);	
+	end
+
+
     // Keep track of the transations on the bus
     // TRANSATION should be asserted up if there is
     // any transation on the bus
@@ -174,7 +179,7 @@ module Device_new(FRAME,
                 INDEX <= INDEX + 1;
             end
             else begin
-                // Move the data to temp buffer to be processed by the Device
+                // Move 0000the data to temp buffer to be processed by the Device
                 // Assert TRDY up during the operation for only one cycle
                 // then wrap the INDEX to zero
                 DEVICE_READY   <= 0;
@@ -196,13 +201,16 @@ module Device_new(FRAME,
         if (~REST)
             AD_OUTPUT_EN <= 0;
         else
-            OUTPUT_BUFFER <= MEM[INDEX];
+			
+			OUTPUT_BUFFER <= MEM[INDEX];
+			
+			
+            
         
         if (DATA_READ) begin
             // the read opeation doeesn't have side effects
             // so we only wrap the index to zero
-            INDEX        <= (INDEX > 3) ? 0 : INDEX;
-            INDEX        <= INDEX + 1;
+            INDEX        <= (INDEX >= 3) ? 0 : INDEX + 1;
             AD_OUTPUT_EN <= 1;
         end
         else begin
