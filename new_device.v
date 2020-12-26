@@ -1,21 +1,21 @@
-`timescale 1ns / 1ps
+//`timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date:    19:41:34 12/25/2020 
-// Design Name: 
-// Module Name:    Device 
-// Project Name: 
-// Target Devices: 
-// Tool versions: 
-// Description: 
+// Company:
+// Engineer:
 //
-// Dependencies: 
+// Create Date:    19:41:34 12/25/2020
+// Design Name:
+// Module Name:    Device
+// Project Name:
+// Target Devices:
+// Tool versions:
+// Description:
 //
-// Revision: 
+// Dependencies:
+//
+// Revision:
 // Revision 0.01 - File Created
-// Additional Comments: 
+// Additional Comments:
 //
 //////////////////////////////////////////////////////////////////////////////////
 /*************************************************
@@ -24,13 +24,13 @@
 
 
 module Device(FRAME,
-                  CLK,     // Clock
-                  REST,    // Asyncronous Reset(Active Low)
-                  AD,      // Address and Data line time multiplexing
-                  CBE,     // Control command
-                  IRDY,    // Initiator ready(Active Low)
-                  TRDY,    // Target ready(Active Low)
-                  DEVSEL); // Device select ready(Active Low)
+              CLK,     // Clock
+              REST,    // Asyncronous Reset(Active Low)
+              AD,      // Address and Data line time multiplexing
+              CBE,     // Control command
+              IRDY,    // Initiator ready(Active Low)
+              TRDY,    // Target ready(Active Low)
+              DEVSEL); // Device select ready(Active Low)
     
     /******************* INPUT ********************/
     input wire CLK;
@@ -47,23 +47,24 @@ module Device(FRAME,
     inout [31:0] AD;
     
     /**************** PARAMETERS ***************/
-    parameter BASE_AD = 32'hFFFF0000;
+    parameter BASE_AD  = 32'hFFFF0000;
     parameter READ_OP  = 4'b0110;
     parameter WRITE_OP = 4'b0111;
     
     /****************** INTERNAL ******************/
     reg [31:0] MEM [0:3]; // Device internal memory 4 words
     reg [31:0] TEMP_BUFFER [0:3]; // Device internal buffer 4 words
-    reg [2:0]  INDEX ;  // used as a pointer
+    reg [2:0]  INDEX;  // used as a pointer
+    reg [2:0]  INDEX_READ;
     reg DEVICE_READY;
-  /*  
-    initial
-	begin
-		$readmemh("ram.mem", MEM);	
-	end
-	*/
-
-
+    /*
+     initial
+     begin
+     $readmemh("ram.mem", MEM);
+     end
+     */
+    
+    
     // Keep track of the transations on the bus
     // TRANSATION should be asserted up if there is
     // any transation on the bus
@@ -91,16 +92,25 @@ module Device(FRAME,
     // TODO: Shoud be modified to map to the internal memery addres
     reg [31:0] ADRESS_BUFF;
     reg [3:0] COMMAND_BUFF;
-    always @(posedge CLK) 
-	 begin
-        if (TRANSATION_START) 
-		  begin
+    reg FIRST_DATA_PHASE;
+    reg SECOND_DATA_PHASE;
+    always @(posedge CLK)
+    begin
+        if (TRANSATION_START)
+        begin
             ADRESS_BUFF <= AD;
             // We work on 32bit aligend address so we ignore
             // the first two bits
-            INDEX        <= AD[3:2];
-            COMMAND_BUFF <= CBE;
+            // INDEX         <= AD[3:2];
+            COMMAND_BUFF     <= CBE;
+            FIRST_DATA_PHASE <= 1;
+            end else begin
+            FIRST_DATA_PHASE <= 0;
         end
+    end
+    
+    always @(posedge CLK) begin
+        SECOND_DATA_PHASE <= FIRST_DATA_PHASE;
     end
     
     // See if our device is the target
@@ -176,81 +186,90 @@ module Device(FRAME,
     assign DEVSEL = DEVICE_TRANSATION ? ~DEVSEL_BUFF_NEG : 1'bZ;
     assign TRDY   = DEVICE_TRANSATION ? ~TRDY_BUFF_NEG : 1'bZ;
     
-
+    
     // Mask to be used with write opeartion
     wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
     
-
+    
     // Siganls to track the current operation
     wire DATA_WRITE = ~DEVSEL & (WRITE_OP == COMMAND_BUFF) & ~IRDY;
     wire DATA_READ  = ~DEVSEL & (READ_OP == COMMAND_BUFF) & ~IRDY & ~TRDY;
     
     
-/*************************************************
- *               WRITE OPERATION                 *
- *************************************************/
-    always @(negedge REST) 
-	 begin
+    /*************************************************
+     *               WRITE OPERATION                 *
+     *************************************************/
+    
+    always @(posedge CLK or negedge REST)
+    begin
         if (~REST) begin
             INDEX        <= 0;
             DEVICE_READY <= 1;
         end
-	 end
-	 
-    always @(posedge CLK) 
-	 begin
-
-        if (DATA_WRITE) 
-		  begin
-            if (INDEX < 4) 
-					begin
-                DEVICE_READY <= 1;
-                // Store only the Bytes enableld data
-                MEM[INDEX] <= (MEM[INDEX] & ~MASK) | (AD & MASK);
-                // Add one to the index to point at the next word
-                INDEX <= INDEX + 1;
-					end
-	
+        else begin
+            if (TRANSATION_START)
+                INDEX <= AD[3:2];
             else begin
-                // Move 0000the data to temp buffer to be processed by the Device
-                // Assert TRDY up during the operation for only one cycle
-                // then wrap the INDEX to zero
-                DEVICE_READY   <= 0;
-                TEMP_BUFFER[0] <= MEM[0];
-                TEMP_BUFFER[1] <= MEM[1];
-                TEMP_BUFFER[2] <= MEM[2];
-                TEMP_BUFFER[3] <= MEM[3];
-                INDEX          <= 0;
+                if (DATA_WRITE)
+                begin
+                    if (INDEX < 4)
+                    begin
+                        DEVICE_READY <= 1;
+                        // Store only the Bytes enableld data
+                        MEM[INDEX] <= (MEM[INDEX] & ~MASK) | (AD & MASK);
+                        // Add one to the index to point at the next word
+                        INDEX <= INDEX + 1;
+                    end
+                    else begin
+                        // Move 0000the data to temp buffer to be processed by the Device
+                        // Assert TRDY up during the operation for only one cycle
+                        // then wrap the INDEX to zero
+                        DEVICE_READY   <= 0;
+                        TEMP_BUFFER[0] <= MEM[0];
+                        TEMP_BUFFER[1] <= MEM[1];
+                        TEMP_BUFFER[2] <= MEM[2];
+                        TEMP_BUFFER[3] <= MEM[3];
+                        INDEX          <= 0;
+                    end
+                end
             end
         end
     end
     
-/*************************************************
- *               READ OPERATION                  *
- *************************************************/
+    /*************************************************
+     *               READ OPERATION                  *
+     *************************************************/
     reg [31:0] OUTPUT_BUFFER;
     reg AD_OUTPUT_EN;
-	 
-	always @(negedge REST)
-	begin
-		if (~REST)
-			AD_OUTPUT_EN <= 0;
-	end
-
-	always @(negedge CLK) 
-	begin
-
-	  if (DATA_READ) begin
-			// the read opeation doeesn't have side effects
-			// so we only wrap the index to zero
-			INDEX        <= (INDEX >= 3) ? 0 : INDEX + 1;
-			AD_OUTPUT_EN <= 1;
-	  end
-	  else begin
-			AD_OUTPUT_EN <= 0;
-	  end
-	end
-	// tri-state the AD to the output location
-	assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
-
+    always @(negedge CLK) begin
+        OUTPUT_BUFFER <= MEM[INDEX_READ];
+    end
+    
+    always @(negedge CLK or negedge REST)
+    begin
+        if (~REST) begin
+            AD_OUTPUT_EN <= 0;
+            INDEX_READ   <= 0;
+        end
+        else begin
+            if (FIRST_DATA_PHASE) begin
+                INDEX_READ <= ADRESS_BUFF[3:2];
+            end
+            else begin
+                if (DATA_READ) begin
+                    // the read opeation doeesn't have side effects
+                    // so we only wrap the index to zero
+                    INDEX_READ   <= (INDEX_READ >= 3) ? 0 : INDEX_READ + 1;
+                    AD_OUTPUT_EN <= 1;
+                end
+                else begin
+                    AD_OUTPUT_EN <= 0;
+                end
+            end
+        end
+        
+    end
+    // tri-state the AD to the output location
+    assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
+    
 endmodule

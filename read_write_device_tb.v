@@ -23,14 +23,14 @@ module DeviceTestBench();
     assign AD = AD_OE? AD_REG: 32'hZZZZZZZZ;
     
     // Instantiate the Device
-    Device_new D1(FRAME, CLK, RST, AD, CBE, IRDY, TRDY, DEVSEL);
+    Device D1(FRAME, CLK, RST, AD, CBE, IRDY, TRDY, DEVSEL);
     
     // Intialize the signals
     initial begin
         CLK    = 1;
         AD_OE  = 1;
         IRDY   = 1'b1;
-        AD_REG = 32'hffff_0000;
+        AD_REG = 32'hffff_0004;
         FRAME  = 1'b1;
         RST    = 0;
     end
@@ -48,7 +48,7 @@ module DeviceTestBench();
         #10
         FRAME  = 1'b0;
         CBE    = 4'b0111; // WRITE OPERATION
-        AD_REG = 32'hffff_0000;
+        AD_REG = 32'hffff_0005;
         IRDY   = 1'b1;
         #10
         IRDY   = 1'b0;
@@ -77,7 +77,7 @@ module DeviceTestBench();
         #10
         FRAME  = 1'b0;
         CBE    = 4'b0110; // READ OPERATION
-        AD_REG = 32'hffff_0000;
+        AD_REG = 32'hffff_0004;
         #10
         IRDY  = 1'b0;
         AD_OE = 0;
