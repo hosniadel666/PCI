@@ -117,7 +117,7 @@ module Device(FRAME,
             else 
                 case (TARGET_ABORT)
                     1'b0:  TARGET_ABORT <= 0;
-                    1'b1: if (TRANSATION_END)
+                    1'b1: if (TRANSATION_END | FRAME)
                     TARGET_ABORT <= 1'b0;
                 endcase  
         end
@@ -131,12 +131,12 @@ module Device(FRAME,
     reg READ_ONE;
     always @(posedge CLK or negedge REST) begin
          if (~REST) begin
-             WRITE_ONE <= 1;
-        READ_ONE <= 1;
+            WRITE_ONE <= 1;
+            READ_ONE <= 1;
         end
         else begin
-        WRITE_ONE <= ~TARGET_ABORT;
-        READ_ONE <= WRITE_ONE;
+            WRITE_ONE <= ~(TARGET_ABORT & ~IRDY);
+            READ_ONE <= WRITE_ONE;
         end
     end
 
@@ -156,7 +156,7 @@ module Device(FRAME,
             else
                 case (DISCONNECT_WITHOUT_DATA)
                     1'b0: DISCONNECT_WITHOUT_DATA <= 0;
-                    1'b1: if (TRANSATION_END)
+                    1'b1: if (TRANSATION_END| FRAME)
                     DISCONNECT_WITHOUT_DATA <= 1'b0;
                 endcase
         end
@@ -217,7 +217,10 @@ module Device(FRAME,
         else
             case(TRANSATION)
                 1'b0: TRDY_BUFF <= TARGETED; // fast
-                1'b1: TRDY_BUFF <= TRDY_BUFF & ~LAST_DATA_TRANSFER;
+                1'b1: TRDY_BUFF <= TRDY_BUFF & ~LAST_DATA_TRANSFER & 
+                                   ~DISCONNECT_WITHOUT_DATA & 
+                                   ~(((TARGET_ABORT & ~IRDY ) & COMMOND_WRITE)
+                                   | (~WRITE_ONE & COMMOND_READ));
             endcase
     end
     
@@ -232,9 +235,9 @@ module Device(FRAME,
             TARGET_ABORT_NEG <= 0;
         end
         else begin
-            TRDY_BUFF_NEG    <= TRDY_BUFF & DEVICE_READY & ~DISCONNECT_WITHOUT_DATA;
+            TRDY_BUFF_NEG    <= TRDY_BUFF & DEVICE_READY ;
             DEVSEL_BUFF_NEG  <= DEVSEL_BUFF;
-            TARGET_ABORT_NEG <= TARGET_ABORT & DISCONNECT_WITHOUT_DATA;
+            TARGET_ABORT_NEG <= TARGET_ABORT | DISCONNECT_WITHOUT_DATA;
         end
     end
     
