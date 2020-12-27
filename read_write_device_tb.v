@@ -52,12 +52,12 @@ wire STOP;
         AD_REG = 32'hffff_0000;
         IRDY   = 1'b1;
         #10
-        IRDY   = 1'b0;
+        IRDY   = 1'b1;
         CBE    = 4'b1111;
         AD_REG = 32'h0000_f0f0; // Data
         #10
         // FRAME = 1'b1;
-        //  IRDY   = 1'b1;
+        IRDY   = 1'b0;
         AD_REG = 32'h0000_f0f1; // Data
         #10
         AD_REG = 32'h0000_f0f2; // Data
@@ -82,9 +82,12 @@ wire STOP;
         CBE    = 4'b0110; // READ OPERATION
         AD_REG = 32'hffff_0000;
         #10
-        IRDY  = 1'b0;
+        IRDY  = 1'b1;
         AD_OE = 0;
+#10
+IRDY  = 1'b1;
         #20
+IRDY  = 1'b0;
         FRAME = 1;
         #10
         IRDY      = 1'b1;
