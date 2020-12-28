@@ -84,10 +84,11 @@ wire STOP;
         #10
         IRDY  = 1'b1;
         AD_OE = 0;
-#10
-IRDY  = 1'b1;
+        #10
+        IRDY  = 1'b1;
+                #20
+        IRDY  = 1'b0;
         #20
-IRDY  = 1'b0;
         FRAME = 1;
         #10
         IRDY      = 1'b1;
