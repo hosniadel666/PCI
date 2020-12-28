@@ -276,9 +276,9 @@ module Device(FRAME,
     /****************** INTERNAL ******************/
     reg [31:0] MEM [0:3]; // Device internal memory 4 words
     reg [31:0] INTERNAL_BUFFER [0:31]; // Device internal buffer 4 words
-    reg [2:0]  INDEX_WRITE;  // used as pointer in case of write operation
-    reg [2:0]  INDEX_READ;  // used as pointer in case of read operation
-    reg [5:0]  INDEX_BUFFER;  // used as pointer in case of read operation
+    reg [1:0]  INDEX_WRITE;  // used as pointer in case of write operation
+    reg [1:0]  INDEX_READ;  // used as pointer in case of read operation
+    reg [1:0]  INDEX_BUFFER;  // used as pointer in case of read operation
     
     /*************************************************
      *               WRITE OPERATION                 *
@@ -299,25 +299,24 @@ module Device(FRAME,
             else begin
                 if (DATA_WRITE)
                 begin
-                    if (INDEX_WRITE < 4)
-                    begin
-                        DEVICE_READY <= 1;
-                        // Store only the Bytes enableld data
-                        MEM[INDEX_WRITE] <= (MEM[INDEX_WRITE] & ~MASK) | (AD & MASK);
-                        // Add one to the index to point at the next word
-                        INDEX_WRITE <= INDEX_WRITE + 1;
-                    end
-                    else begin
-                        // Move the data to temp buffer to be processed by the Device
-                        // Assert TRDY up during the operation for only one cycle
-                        // then wrap the INDEX_WRITE to zero
-                        DEVICE_READY   <= 0;
+                    if(~DEVICE_READY) begin
                         INTERNAL_BUFFER[INDEX_BUFFER] <= MEM[0];
                         INTERNAL_BUFFER[INDEX_BUFFER + 1] <= MEM[1];
                         INTERNAL_BUFFER[INDEX_BUFFER + 2] <= MEM[2];
                         INTERNAL_BUFFER[INDEX_BUFFER + 3] <= MEM[3];
-                        INDEX_WRITE  <= 0;
-                        INDEX_BUFFER <= (INDEX_READ >= 30) ? 0 : INDEX_BUFFER + 4;
+                        INDEX_BUFFER <= INDEX_BUFFER + 4;
+                        DEVICE_READY <= 1;
+                    end else begin
+                        // if we reached the last byte reserve the next
+                        // cycle for moveing the data to the buffer
+                        if (INDEX_WRITE == 3)
+                            DEVICE_READY <= 0;
+                        else
+                            DEVICE_READY <= 1;
+                        // Store only the Bytes enableld data
+                        MEM[INDEX_WRITE] <= (MEM[INDEX_WRITE] & ~MASK) | (AD & MASK);
+                        // Add one to the index to point at the next word
+                        INDEX_WRITE <= INDEX_WRITE + 1;
                     end
                 end
             end
@@ -329,8 +328,17 @@ module Device(FRAME,
      *************************************************/
     reg [31:0] OUTPUT_BUFFER;
     reg AD_OUTPUT_EN;
-    always @(negedge CLK) begin
-        OUTPUT_BUFFER <= MEM[INDEX_READ];
+
+    // parity is enabeled one cycle after the data
+    reg PAR_OUTPUT_EN;
+    always @(negedge CLK or negedge REST) begin
+        if(~REST) begin
+            OUTPUT_BUFFER <= 32'hFFFF_FFFF;
+            PAR_OUTPUT_EN <= 0; 
+        end else begin
+            OUTPUT_BUFFER <= MEM[INDEX_READ];
+            PAR_OUTPUT_EN <= AD_OUTPUT_EN; 
+        end
     end
     
     always @(negedge CLK or negedge REST)
@@ -348,7 +356,7 @@ module Device(FRAME,
                     // the read opeation doeesn't have side effects
                     // so we only wrap the index to zero
                     AD_OUTPUT_EN <= 1;
-                    INDEX_READ   <= (INDEX_READ >= 3) ? 0 : INDEX_READ + 1;      
+                    INDEX_READ   <= INDEX_READ + 1;      
                 end
                 else begin
                     AD_OUTPUT_EN <= 0;
@@ -378,8 +386,8 @@ module Device(FRAME,
             PAR_OUT <= 0;
         else
             PAR_OUT_NEG <= PAR_OUT;
-    end
+    end 
 
-    assign PAR = AD_OUTPUT_EN ? PAR_OUT_NEG : 1'hZ;
+    assign PAR = PAR_OUTPUT_EN ? PAR_OUT_NEG : 1'hZ;
     
 endmodule

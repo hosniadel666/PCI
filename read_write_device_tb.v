@@ -55,20 +55,20 @@ wire STOP;
         IRDY   = 1'b1;
         CBE    = 4'b1111;
         AD_REG = 32'h0000_f0f0; // Data
-        #10
         // FRAME = 1'b1;
         IRDY   = 1'b0;
+        #10
         AD_REG = 32'h0000_f0f1; // Data
         #10
         AD_REG = 32'h0000_f0f2; // Data
-        #10
-        IRDY = 1'b1;
+        // #10
+        // IRDY = 1'b1;
         #10
         IRDY   = 1'b0;
         AD_REG = 32'h0000_f0f3; // Data
         #10
         AD_REG = 32'h0000_f0f4; // Data
-        #20
+        #10
         AD_REG = 32'h0000_f0f5; // Data
         #10
         AD_REG = 32'h0000_f0f6; // Data
