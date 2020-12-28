@@ -225,7 +225,7 @@ module Device(FRAME,
     // during the transation due to target abort
     wire STOPED = DISCONNECT_WITHOUT_DATA |
                  (DISCONNECT & COMMOND_WRITE) | 
-                 (DISCONNECT & COMMOND_READ);
+                 (~TRANSACTION_READY & COMMOND_READ);
     reg TRDY_BUFF;
     always @(posedge CLK or negedge REST) begin
         if (~REST)
@@ -262,8 +262,16 @@ module Device(FRAME,
     
     // Siganls to track the current operation
     wire DATA_WRITE = ~DEVSEL & COMMOND_WRITE & ~IRDY & TRANSACTION_READY;
-    wire DATA_READ  = ~DEVSEL & COMMOND_READ & ~IRDY & ~TRDY & TRANSACTION_READY;
     
+    // as we read at the negtive edge
+    // we need capture DATA_READ at the postive edge
+    // notoice that we used a wire with DATA_WRITE as we write 
+    // at the postive edge already
+    reg DATA_READ;
+    always @(posedge CLK) begin
+        DATA_READ <=  ~DEVSEL & COMMOND_READ & ~FRAME & ~IRDY & ~TRDY & TRANSACTION_READY;
+    end
+
     /********* PARITY CALCULATION *********/
     wire PAR_DATA = ^AD;
     wire PAR_CBE  = ^CBE;

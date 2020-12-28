@@ -76,10 +76,10 @@ module StopTestBench();
         FRAME  = 1'b0;
         CBE    = MEM_WRITE_C;
         AD_REG = BASE_AD;
+        #20
         IRDY   = 1'b0;
 
         // put the first data on the bus 
-        #10
         CBE    = 4'b1111;
         AD_REG = data[0]; // Data
 
@@ -113,10 +113,10 @@ module StopTestBench();
         // the last data transfer 
         FRAME = 1;
         #5;
-        while(TRDY) begin
-            $display("Device busy");
-            #5;
-        end
+        // while(TRDY) begin
+        //     $display("Device busy");
+        //     #5;
+        // end
         $display("Writing %h", data[i - 1]);
         #5 IRDY = 1;
         $display("\nTRANSACTION FINISHED\n");
@@ -127,10 +127,11 @@ module StopTestBench();
         FRAME  = 1'b0;
         CBE    = MEM_READ_C;
         AD_REG = BASE_AD;
-
-        #10
-        IRDY   = 1'b0;
+        #10 
         AD_OE = 0;
+
+        #0
+        IRDY   = 1'b0;
 
         // Wait for turn around cycle
         #10
