@@ -1,27 +1,6 @@
-//`timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company:
-// Engineer:
-//
-// Create Date:    19:41:34 12/25/2020
-// Design Name:
-// Module Name:    Device
-// Project Name:
-// Target Devices:
-// Tool versions:
-// Description:
-//
-// Dependencies:
-//
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-//
-//////////////////////////////////////////////////////////////////////////////////
 /*************************************************
  *               DEVICE MODULE                   *
  *************************************************/
-
 
 module Device(FRAME,
               CLK,    // Clock
@@ -51,16 +30,21 @@ module Device(FRAME,
     inout PAR;
     
     /**************** PARAMETERS *****************/
-    parameter BASE_AD  = 32'hFFFF0000;
-    parameter MEM_READ_C  = 4'b0110;
-    parameter MEM_WRITE_C = 4'b0111;
-    parameter MEM_READ_MUL_C  = 4'b1100;
-    parameter MEM_READ_LINE_C  = 4'b1110;
+    parameter BASE_AD           = 32'hFFFF0000;
+    parameter MEM_READ_C        = 4'b0110;
+    parameter MEM_WRITE_C       = 4'b0111;
+    parameter MEM_READ_MUL_C    = 4'b1100;
+    parameter MEM_READ_LINE_C   = 4'b1110;
     parameter MEM_WRITE_INVAL_C = 4'b1111;
-
+    
     /************** PCI ENDPOINT ****************/
     
     reg DEVICE_READY;  // used by the device to state that it's not ready
+    
+    // Perserving the values of tri-state outputs
+    reg TRDY_INT;
+    reg DEVSEL_INT;
+    reg STOP_INT;
     
     // Keep track of the transations on the bus
     // TRANSACTION should be asserted up if there is
@@ -125,7 +109,7 @@ module Device(FRAME,
     
     // Disconnet with data
     // dessert TRANSACTION_READY after the one data phase
-
+    
     // TRANSACTION_READY is used to indcaite that will be the last data
     // to transfer from or to the device
     // once it's low it won't be up until the end of the transcation
@@ -139,7 +123,7 @@ module Device(FRAME,
             case (TRANSACTION_READY)
                 1'b1: TRANSACTION_READY <= ~DISCONNECT;
                 1'b0: if (TRANSACTION_END | FRAME)
-                            TRANSACTION_READY <= 1'b1;
+                TRANSACTION_READY <= 1'b1;
             endcase
         end
     end
@@ -150,7 +134,7 @@ module Device(FRAME,
                          (CBE == MEM_READ_MUL_C) |
                          (CBE == MEM_READ_LINE_C) |
                          (CBE == MEM_WRITE_INVAL_C);
-
+    
     reg DISCONNECT_WITHOUT_DATA;
     always @(posedge CLK or negedge REST) begin
         if (~REST) begin
@@ -195,7 +179,7 @@ module Device(FRAME,
     
     // Keep track of the last byte to transfer
     // when the frame asserted up
-    wire LAST_DATA_TRANSFER = FRAME & ~IRDY & ~TRDY;
+    wire LAST_DATA_TRANSFER = FRAME & ~IRDY & ~TRDY_INT;
     
     // Asserting DEVSEL
     // Storing it's state in and internal register will help us
@@ -211,20 +195,20 @@ module Device(FRAME,
                 1'b1: DEVSEL_BUFF <= DEVSEL_BUFF & ~LAST_DATA_TRANSFER & ~FRAME;
             endcase
     end
-
-    // figure out if we read or write
-    wire COMMOND_READ  = (COMMAND_BUFF == MEM_READ_C) | 
-                         (COMMAND_BUFF == MEM_READ_MUL_C) |
-                         (COMMAND_BUFF == MEM_READ_LINE_C) ;
     
-    wire COMMOND_WRITE = (COMMAND_BUFF == MEM_WRITE_C) | 
+    // figure out if we read or write
+    wire COMMOND_READ = (COMMAND_BUFF == MEM_READ_C) |
+                        (COMMAND_BUFF == MEM_READ_MUL_C) |
+                        (COMMAND_BUFF == MEM_READ_LINE_C) ;
+    
+    wire COMMOND_WRITE = (COMMAND_BUFF == MEM_WRITE_C) |
                          (COMMAND_BUFF == MEM_WRITE_INVAL_C);
     
     // Asserting TRDY
     // the same as DEVSEL but we might need to assert it up
     // during the transation due to target abort
     wire STOPED = DISCONNECT_WITHOUT_DATA |
-                 (DISCONNECT & COMMOND_WRITE) | 
+                 (DISCONNECT & COMMOND_WRITE) |
                  (~TRANSACTION_READY & COMMOND_READ);
     reg TRDY_BUFF;
     always @(posedge CLK or negedge REST) begin
@@ -238,48 +222,36 @@ module Device(FRAME,
     end
     
     // Asserting on negtive edge
-    reg TRDY_BUFF_NEG;
-    reg DEVSEL_BUFF_NEG;
-    reg TARGET_ABORT_NEG;
     always @(negedge CLK or negedge REST) begin
         if (~REST) begin
-            TRDY_BUFF_NEG    <= 0;
-            DEVSEL_BUFF_NEG  <= 0;
-            TARGET_ABORT_NEG <= 0;
+            TRDY_INT   <= 1;
+            DEVSEL_INT <= 1;
+            STOP_INT   <= 1;
         end
         else begin
-            TRDY_BUFF_NEG    <= TRDY_BUFF & DEVICE_READY & ~DISCONNECT_WITHOUT_DATA ;
-            DEVSEL_BUFF_NEG  <= DEVSEL_BUFF;
-            TARGET_ABORT_NEG <= TARGET_ABORT | DISCONNECT_WITHOUT_DATA;
+            TRDY_INT   <= ~(TRDY_BUFF & DEVICE_READY & ~DISCONNECT_WITHOUT_DATA) ;
+            DEVSEL_INT <= ~(DEVSEL_BUFF);
+            STOP_INT   <= ~(TARGET_ABORT | DISCONNECT_WITHOUT_DATA);
         end
     end
     
     // Asserting DEVSEL & TRDY down during the transaction or tri-state it
-    assign DEVSEL = DEVICE_TRANSACTION ? ~DEVSEL_BUFF_NEG : 1'bZ;
-    assign TRDY   = DEVICE_TRANSACTION ? ~TRDY_BUFF_NEG : 1'bZ;
-    assign STOP   = DEVICE_TRANSACTION ? ~TARGET_ABORT_NEG : 1'bZ;
+    assign DEVSEL = DEVICE_TRANSACTION ? DEVSEL_INT : 1'bZ;
+    assign TRDY   = DEVICE_TRANSACTION ? TRDY_INT : 1'bZ;
+    assign STOP   = DEVICE_TRANSACTION ? STOP_INT : 1'bZ;
     
     
     // Siganls to track the current operation
-    wire DATA_WRITE = ~DEVSEL & COMMOND_WRITE & ~IRDY & TRANSACTION_READY;
+    wire DATA_WRITE = ~DEVSEL_INT & COMMOND_WRITE & ~IRDY & TRANSACTION_READY;
     
     // as we read at the negtive edge
     // we need capture DATA_READ at the postive edge
-    // notoice that we used a wire with DATA_WRITE as we write 
+    // notoice that we used a wire with DATA_WRITE as we write
     // at the postive edge already
     reg DATA_READ;
     always @(posedge CLK) begin
-        DATA_READ <=  ~DEVSEL & COMMOND_READ & ~FRAME & ~IRDY & ~TRDY & TRANSACTION_READY;
+        DATA_READ <= ~DEVSEL_INT & COMMOND_READ & ~FRAME & ~IRDY & ~TRDY_INT & TRANSACTION_READY;
     end
-
-    /********* PARITY CALCULATION *********/
-    wire PAR_DATA = ^AD;
-    wire PAR_CBE  = ^CBE;
-    wire PAR_ALL  = PAR_CBE ^ PAR_DATA;
-
-    /********* PARITY REPORTING *********/
-
-        
     
     /****************** INTERNAL ******************/
     reg [31:0] MEM [0:3]; // Device internal memory 4 words
@@ -307,14 +279,15 @@ module Device(FRAME,
             else begin
                 if (DATA_WRITE)
                 begin
-                    if(~DEVICE_READY) begin
-                        INTERNAL_BUFFER[INDEX_BUFFER] <= MEM[0];
+                    if (~DEVICE_READY) begin
+                        INTERNAL_BUFFER[INDEX_BUFFER]     <= MEM[0];
                         INTERNAL_BUFFER[INDEX_BUFFER + 1] <= MEM[1];
                         INTERNAL_BUFFER[INDEX_BUFFER + 2] <= MEM[2];
                         INTERNAL_BUFFER[INDEX_BUFFER + 3] <= MEM[3];
-                        INDEX_BUFFER <= INDEX_BUFFER + 4;
-                        DEVICE_READY <= 1;
-                    end else begin
+                        INDEX_BUFFER                      <= INDEX_BUFFER + 4;
+                        DEVICE_READY                      <= 1;
+                    end
+                    else begin
                         // if we reached the last byte reserve the next
                         // cycle for moveing the data to the buffer
                         if (INDEX_WRITE == 3)
@@ -336,16 +309,13 @@ module Device(FRAME,
      *************************************************/
     reg [31:0] OUTPUT_BUFFER;
     reg AD_OUTPUT_EN;
-
-    // parity is enabeled one cycle after the data
-    reg PAR_OUTPUT_EN;
+    
     always @(negedge CLK or negedge REST) begin
-        if(~REST) begin
+        if (~REST) begin
             OUTPUT_BUFFER <= 32'hFFFF_FFFF;
-            PAR_OUTPUT_EN <= 0; 
-        end else begin
+        end
+        else begin
             OUTPUT_BUFFER <= MEM[INDEX_READ];
-            PAR_OUTPUT_EN <= AD_OUTPUT_EN; 
         end
     end
     
@@ -364,7 +334,7 @@ module Device(FRAME,
                     // the read opeation doeesn't have side effects
                     // so we only wrap the index to zero
                     AD_OUTPUT_EN <= 1;
-                    INDEX_READ   <= INDEX_READ + 1;      
+                    INDEX_READ   <= INDEX_READ + 1;
                 end
                 else begin
                     AD_OUTPUT_EN <= 0;
@@ -375,27 +345,46 @@ module Device(FRAME,
     end
     // tri-state the AD to the output location
     assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
-
+    
+    /********* PARITY CALCULATION *********/
+    wire PAR_DATA = ^AD;
+    wire PAR_CBE  = ^CBE;
+    wire PAR_ALL  = PAR_CBE ^ PAR_DATA;
+    
+    /********* PARITY REPORTING *********/
+    
+    
     /*********  PARITY GENERATION *********/
-    // get the parity at the postive edge 
+    // get the parity at the postive edge
     reg PAR_OUT;
     always@(posedge CLK or negedge REST) begin
-        if(~REST)
+        if (~REST)
             PAR_OUT <= 0;
         else
             PAR_OUT <= PAR_ALL;
     end
-
-    // delay it to the negtive edge 
+    
+    // delay it to the negtive edge
     // to be seen at the bus at the next cycle
-    reg PAR_OUT_NEG;
+    reg PAR_INT;
     always@(negedge CLK or negedge REST) begin
-        if(~REST)
-            PAR_OUT <= 0;
+        if (~REST)
+            PAR_INT <= 0;
         else
-            PAR_OUT_NEG <= PAR_OUT;
-    end 
-
-    assign PAR = PAR_OUTPUT_EN ? PAR_OUT_NEG : 1'hZ;
+            PAR_INT <= PAR_OUT;
+    end
+    
+    // parity is enabeled one cycle after the data
+    reg PAR_OUTPUT_EN;
+    always @(negedge CLK or negedge REST) begin
+        if (~REST) begin
+            PAR_OUTPUT_EN <= 0;
+        end
+        else begin
+            PAR_OUTPUT_EN <= AD_OUTPUT_EN;
+        end
+    end
+    
+    assign PAR = PAR_OUTPUT_EN ? PAR_INT : 1'hZ;
     
 endmodule
