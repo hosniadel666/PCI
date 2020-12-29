@@ -11,7 +11,9 @@ module Device(FRAME,
               TRDY,   // Target ready(Active Low)
               DEVSEL,
               STOP,
-              PAR);
+              PAR,
+              SERR,
+              PERR);
     
     /******************* INPUT ********************/
     input wire CLK;
@@ -24,10 +26,12 @@ module Device(FRAME,
     output wire TRDY;
     output wire DEVSEL;
     output wire STOP;
+    output wire SERR;
+    output wire PERR;
     
     /******************* INOUT ********************/
     inout [31:0] AD;
-    inout PAR;
+    input PAR;
     
     /**************** PARAMETERS *****************/
     parameter BASE_AD           = 32'hFFFF0000;
@@ -208,8 +212,8 @@ module Device(FRAME,
     // the same as DEVSEL but we might need to assert it up
     // during the transation due to target abort
     wire STOPED = DISCONNECT_WITHOUT_DATA |
-                 (DISCONNECT & COMMOND_WRITE) |
-                 (~TRANSACTION_READY & COMMOND_READ);
+                  (DISCONNECT & COMMOND_WRITE) |
+                  (~TRANSACTION_READY & COMMOND_READ);
     reg TRDY_BUFF;
     always @(posedge CLK or negedge REST) begin
         if (~REST)
@@ -294,6 +298,7 @@ module Device(FRAME,
                             DEVICE_READY <= 0;
                         else
                             DEVICE_READY <= 1;
+                            
                         // Store only the Bytes enableld data
                         MEM[INDEX_WRITE] <= (MEM[INDEX_WRITE] & ~MASK) | (AD & MASK);
                         // Add one to the index to point at the next word
@@ -347,12 +352,110 @@ module Device(FRAME,
     assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
     
     /********* PARITY CALCULATION *********/
-    wire PAR_DATA = ^AD;
-    wire PAR_CBE  = ^CBE;
-    wire PAR_ALL  = PAR_CBE ^ PAR_DATA;
+    wire PAR_AD  = ^AD;
+    wire PAR_CBE = ^CBE;
+    wire PAR_ALL = PAR_CBE ^ PAR_AD;
     
     /********* PARITY REPORTING *********/
+    // check parity errors on address phase
+    // report to the system if by asserting SERR
+    reg CHECK_PARITY_ADD;
+    reg SERR_BUFF;
+    reg ADDRESS_PAR;
+    always@(posedge CLK or negedge REST) begin
+        if (~REST) begin
+            CHECK_PARITY_ADD <= 0;
+            SERR_BUFF        <= 1;
+            ADDRESS_PAR      <= 0;
+        end
+        else begin
+            if (CHECK_PARITY_ADD) begin
+                if (PAR != ADDRESS_PAR)
+                    SERR_BUFF <= 0;
+                
+                CHECK_PARITY_ADD <= 0;
+            end
+            
+            if (TRANSACTION_START & TARGETED) begin
+                ADDRESS_PAR      <= PAR_ALL;
+                CHECK_PARITY_ADD <= 1;
+            end
+        end
+    end
     
+    // check parity errors on data phases
+    // report to the master if by asserting PERR
+    reg CHECK_PARITY_DAT;
+    reg PERR_BUFF;
+    reg DATA_PAR;
+    reg DEASSERT_FLAG; // used to deassert PERR after two cycle of assertion
+    always@(posedge CLK or negedge REST) begin
+        if (~REST) begin
+            CHECK_PARITY_DAT <= 0;
+            PERR_BUFF        <= 1;
+            DATA_PAR         <= 0;
+            DEASSERT_FLAG    <= 0;
+        end
+        else begin
+            // Check the parity of the last phase
+            if (CHECK_PARITY_DAT) begin
+                if (PAR != DATA_PAR) begin
+                    PERR_BUFF <= 0; 
+                    DEASSERT_FLAG <= 0;
+                end
+                CHECK_PARITY_DAT <= 0;
+            end
+            // clac the parity in case of writing
+            if (DATA_WRITE) begin
+                DATA_PAR         <= PAR_ALL;
+                CHECK_PARITY_DAT <= 1;
+            end
+            // deasset PERR after two cycles
+            if(~PERR_BUFF) begin
+                if(DEASSERT_FLAG)
+                    PERR_BUFF <= 1;
+                else
+                    DEASSERT_FLAG <= 1; 
+            end
+        end
+    end
+
+    // Deriving PERR
+    reg PERR_OE;
+    always@(posedge CLK or negedge REST) begin
+        if (~REST) begin
+            PERR_OE <= 0;
+        end
+        else begin
+            case(PERR_OE)
+            1'b0: PERR_OE <= DATA_WRITE;
+            1'b1: if(TRANSACTION_END)
+            PERR_OE <= 0;
+        endcase
+        end
+    end
+    
+    // delay to the negtive edge
+    reg SERR_INT;
+    reg PERR_INT;
+    reg [2:0] PERR_OE_SR;
+    always@(negedge CLK or negedge REST) begin
+        if (~REST) begin
+            SERR_INT <= 1;
+            PERR_INT <= 1;
+        end
+        else begin
+            SERR_INT <= SERR_BUFF;
+            PERR_INT <= PERR_BUFF;
+            PERR_OE_SR[0] <= PERR_OE;
+            PERR_OE_SR[1] <= PERR_OE_SR[0];
+            PERR_OE_SR[2] <= PERR_OE_SR[1];
+        end
+    end
+    
+    assign SERR = SERR_INT;
+    // Derive PERR one more cycle at the end of the transction
+    assign PERR = (PERR_OE_SR[1] | PERR_OE_SR[2]) ? PERR_INT : 1'bZ;
     
     /*********  PARITY GENERATION *********/
     // get the parity at the postive edge

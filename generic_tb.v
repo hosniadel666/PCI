@@ -17,7 +17,9 @@ module GenericTestBench();
     wire TRDY;
     wire DEVSEL;
     wire STOP;
-    wire PAR;
+    reg PAR;
+    wire SERR;
+    wire PERR;
     
     reg [31:0] AD_REG;
     reg AD_OE;
@@ -33,7 +35,7 @@ module GenericTestBench();
     assign AD = AD_OE? AD_REG: 32'hZZZZZZZZ;
     
     // Instantiate the Device
-    Device D1(FRAME, CLK, RST, AD, CBE, IRDY, TRDY, DEVSEL, STOP, PAR);
+    Device D1(FRAME, CLK, RST, AD, CBE, IRDY, TRDY, DEVSEL, STOP, PAR, SERR, PERR);
     Device #(.BASE_AD(32'hFFFFF000)) D2(FRAME, CLK, RST, AD, CBE, IRDY, TRDY, DEVSEL, STOP, PAR);
     
     // Intialize the signals
@@ -68,18 +70,22 @@ module GenericTestBench();
     endtask
     
     reg enable_loop = 1;
+    reg clc_par;
     
     task write_data; begin
         // Intiating write operation
         #10;
         FRAME = 1'b0;
+        clc_par = (^AD_REG) ^ (^CBE);
         #10
         IRDY = 1'b0;
+        
         
         // put the first data on the bus
         CBE    = 4'b1111;
         AD_REG = data[0]; // Data
-        
+        PAR = clc_par;
+        clc_par = (^AD_REG) ^ (^CBE);
         $display("\nTRANSACTION STARTED\n");
         enable_loop = 1;
         for(i = 1; i < 6 & enable_loop;) begin
@@ -89,6 +95,8 @@ module GenericTestBench();
                 $display("Writing %h", data[i - 1]);
                 #5
                 AD_REG = data[i];
+                PAR = clc_par;
+                clc_par = (^AD_REG) ^ (^CBE);
                 i      = i + 1;
             end
             else if (TRDY & STOP) begin
