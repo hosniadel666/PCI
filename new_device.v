@@ -9,11 +9,12 @@ module Device(FRAME,
               CBE,    // Control command
               IRDY,   // Initiator ready(Active Low)
               TRDY,   // Target ready(Active Low)
-              DEVSEL,
-              STOP,
-              PAR,
-              SERR,
-              PERR);
+              DEVSEL, // Device select(Active Low)
+              STOP,   // Request to stop transaction (Active Low)
+              PAR     // Parity 
+              SERR,   // System error
+              PERR    // Parity error
+              );
     
     /******************* INPUT ********************/
     input wire CLK;
@@ -33,13 +34,21 @@ module Device(FRAME,
     inout [31:0] AD;
     input PAR;
     
+    /****************** INTERNAL ******************/
+    reg [31:0] MEM [0:3]; // Device internal memory 4 words
+    reg [31:0] INTERNAL_BUFFER [0:31]; // Device internal buffer 4 words
+    reg [1:0]  INDEX_WRITE;  // used as pointer in case of write operation
+    reg [1:0]  INDEX_READ;  // used as pointer in case of read operation
+    reg [1:0]  INDEX_BUFFER;  // used as pointer in case of useing internal buffer
+    
     /**************** PARAMETERS *****************/
-    parameter BASE_AD           = 32'hFFFF0000;
-    parameter MEM_READ_C        = 4'b0110;
-    parameter MEM_WRITE_C       = 4'b0111;
-    parameter MEM_READ_MUL_C    = 4'b1100;
-    parameter MEM_READ_LINE_C   = 4'b1110;
-    parameter MEM_WRITE_INVAL_C = 4'b1111;
+    parameter BASE_AD  = 32'hFFFF0000;     // Device base address
+    parameter MEM_READ_C  = 4'b0110;       // Read command
+    parameter MEM_WRITE_C = 4'b0111;       // Write command
+    parameter MEM_READ_MUL_C  = 4'b1100;   // Memory read multiple
+    parameter MEM_READ_LINE_C  = 4'b1110;  // Memory read line
+    parameter MEM_WRITE_INVAL_C = 4'b1111; // Memory write and invalide 
+
     
     /************** PCI ENDPOINT ****************/
     
@@ -256,107 +265,17 @@ module Device(FRAME,
     always @(posedge CLK) begin
         DATA_READ <= ~DEVSEL_INT & COMMOND_READ & ~FRAME & ~IRDY & ~TRDY_INT & TRANSACTION_READY;
     end
-    
-    /****************** INTERNAL ******************/
-    reg [31:0] MEM [0:3]; // Device internal memory 4 words
-    reg [31:0] INTERNAL_BUFFER [0:31]; // Device internal buffer 4 words
-    reg [1:0]  INDEX_WRITE;  // used as pointer in case of write operation
-    reg [1:0]  INDEX_READ;  // used as pointer in case of read operation
-    reg [1:0]  INDEX_BUFFER;  // used as pointer in case of read operation
-    
+
     /*************************************************
-     *               WRITE OPERATION                 *
-     *************************************************/
-    // Mask to be used with write opeartion
-    wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
-    
-    always @(posedge CLK or negedge REST)
-    begin
-        if (~REST) begin
-            INDEX_WRITE  <= 0;
-            INDEX_BUFFER <= 0;
-            DEVICE_READY <= 1;
-        end
-        else begin
-            if (TRANSACTION_START)
-                INDEX_WRITE <= (AD - BASE_AD) >> 2;
-            else begin
-                if (DATA_WRITE)
-                begin
-                    if (~DEVICE_READY) begin
-                        INTERNAL_BUFFER[INDEX_BUFFER]     <= MEM[0];
-                        INTERNAL_BUFFER[INDEX_BUFFER + 1] <= MEM[1];
-                        INTERNAL_BUFFER[INDEX_BUFFER + 2] <= MEM[2];
-                        INTERNAL_BUFFER[INDEX_BUFFER + 3] <= MEM[3];
-                        INDEX_BUFFER                      <= INDEX_BUFFER + 4;
-                        DEVICE_READY                      <= 1;
-                    end
-                    else begin
-                        // if we reached the last byte reserve the next
-                        // cycle for moveing the data to the buffer
-                        if (INDEX_WRITE == 3)
-                            DEVICE_READY <= 0;
-                        else
-                            DEVICE_READY <= 1;
-                            
-                        // Store only the Bytes enableld data
-                        MEM[INDEX_WRITE] <= (MEM[INDEX_WRITE] & ~MASK) | (AD & MASK);
-                        // Add one to the index to point at the next word
-                        INDEX_WRITE <= INDEX_WRITE + 1;
-                    end
-                end
-            end
-        end
-    end
-    
-    /*************************************************
-     *               READ OPERATION                  *
-     *************************************************/
-    reg [31:0] OUTPUT_BUFFER;
-    reg AD_OUTPUT_EN;
-    
-    always @(negedge CLK or negedge REST) begin
-        if (~REST) begin
-            OUTPUT_BUFFER <= 32'hFFFF_FFFF;
-        end
-        else begin
-            OUTPUT_BUFFER <= MEM[INDEX_READ];
-        end
-    end
-    
-    always @(negedge CLK or negedge REST)
-    begin
-        if (~REST) begin
-            AD_OUTPUT_EN <= 0;
-            INDEX_READ   <= 0;
-        end
-        else begin
-            if (FIRST_DATA_PHASE) begin
-                INDEX_READ <= (ADRESS_BUFF - BASE_AD) >> 2;
-            end
-            else begin
-                if (DATA_READ) begin
-                    // the read opeation doeesn't have side effects
-                    // so we only wrap the index to zero
-                    AD_OUTPUT_EN <= 1;
-                    INDEX_READ   <= INDEX_READ + 1;
-                end
-                else begin
-                    AD_OUTPUT_EN <= 0;
-                end
-            end
-        end
-        
-    end
-    // tri-state the AD to the output location
-    assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
-    
-    /********* PARITY CALCULATION *********/
+    *                      PARITY                    *
+    *************************************************/
+
+   /************** PARITY CALCULATION **************/ 
     wire PAR_AD  = ^AD;
     wire PAR_CBE = ^CBE;
     wire PAR_ALL = PAR_CBE ^ PAR_AD;
     
-    /********* PARITY REPORTING *********/
+    /************** PARITY REPORTING **************/
     // check parity errors on address phase
     // report to the system if by asserting SERR
     reg CHECK_PARITY_ADD;
@@ -457,7 +376,7 @@ module Device(FRAME,
     // Derive PERR one more cycle at the end of the transction
     assign PERR = (PERR_OE_SR[1] | PERR_OE_SR[2]) ? PERR_INT : 1'bZ;
     
-    /*********  PARITY GENERATION *********/
+    /*************  PARITY GENERATION ************/
     // get the parity at the postive edge
     reg PAR_OUT;
     always@(posedge CLK or negedge REST) begin
@@ -489,5 +408,94 @@ module Device(FRAME,
     end
     
     assign PAR = PAR_OUTPUT_EN ? PAR_INT : 1'hZ;
+    
+    /*************************************************
+     *               WRITE OPERATION                 *
+     *************************************************/
+
+    // Mask to be used with write opeartion
+    wire [31:0] MASK = {{8{CBE[3]}}, {8{CBE[2]}}, {8{CBE[1]}}, {8{CBE[0]}}};
+    
+    always @(posedge CLK or negedge REST)
+    begin
+        if (~REST) begin
+            INDEX_WRITE  <= 0;
+            INDEX_BUFFER <= 0;
+            DEVICE_READY <= 1;
+        end
+        else begin
+            if (TRANSACTION_START)
+                INDEX_WRITE <= (AD - BASE_AD) >> 2;
+            else begin
+                if (DATA_WRITE)
+                begin
+                    if (~DEVICE_READY) begin
+                        INTERNAL_BUFFER[INDEX_BUFFER]     <= MEM[0];
+                        INTERNAL_BUFFER[INDEX_BUFFER + 1] <= MEM[1];
+                        INTERNAL_BUFFER[INDEX_BUFFER + 2] <= MEM[2];
+                        INTERNAL_BUFFER[INDEX_BUFFER + 3] <= MEM[3];
+                        INDEX_BUFFER                      <= INDEX_BUFFER + 4;
+                        DEVICE_READY                      <= 1;
+                    end
+                    else begin
+                        // if we reached the last byte reserve the next
+                        // cycle for moveing the data to the buffer
+                        if (INDEX_WRITE == 3)
+                            DEVICE_READY <= 0;
+                        else
+                            DEVICE_READY <= 1;
+                            
+                        // Store only the Bytes enableld data
+                        MEM[INDEX_WRITE] <= (MEM[INDEX_WRITE] & ~MASK) | (AD & MASK);
+                        // Add one to the index to point at the next word
+                        INDEX_WRITE <= INDEX_WRITE + 1;
+                    end
+                end
+            end
+        end
+    end
+    
+    /*************************************************
+     *               READ OPERATION                  *
+     *************************************************/
+     
+    reg [31:0] OUTPUT_BUFFER;
+    reg AD_OUTPUT_EN;
+    
+    always @(negedge CLK or negedge REST) begin
+        if (~REST) begin
+            OUTPUT_BUFFER <= 32'hFFFF_FFFF;
+        end
+        else begin
+            OUTPUT_BUFFER <= MEM[INDEX_READ];
+        end
+    end
+    
+    always @(negedge CLK or negedge REST)
+    begin
+        if (~REST) begin
+            AD_OUTPUT_EN <= 0;
+            INDEX_READ   <= 0;
+        end
+        else begin
+            if (FIRST_DATA_PHASE) begin
+                INDEX_READ <= (ADRESS_BUFF - BASE_AD) >> 2;
+            end
+            else begin
+                if (DATA_READ) begin
+                    // the read opeation doeesn't have side effects
+                    // so we only wrap the index to zero
+                    AD_OUTPUT_EN <= 1;
+                    INDEX_READ   <= INDEX_READ + 1;
+                end
+                else begin
+                    AD_OUTPUT_EN <= 0;
+                end
+            end
+        end
+        
+    end
+    // tri-state the AD to the output location
+    assign AD = AD_OUTPUT_EN ? OUTPUT_BUFFER : 32'hZZZZZZZZ;
     
 endmodule
