@@ -2,7 +2,7 @@
 #               DEVICE MODULE                   #
 ################################################*/
 
-module Device(
+module Device_(
 FRAME,  // Transaction Frame
 CLK, // Clock
 RST, // Asyncronous Reset(Active Low)
@@ -33,20 +33,26 @@ inout [31: 0] AD;
 // There should be a condition at which it should be written. (data in mem should be written when Write = 1 and should be able to read when Write = 0).
 
 /*################# INTERNAL #################*/
-reg [31: 0] DEVICE_MEM [0: 99]; // Device memory
+reg [7: 0] DEVICE_MEM [0: 99]; // Device memory //25 word
 reg [31: 0] DEVICE_BUF; // Device internal buffer
 reg [7: 0] INDEX ;
 reg [31: 0] DEVICE_AD; // parameter [31:0]DEVICE_AD = 8'hxxxx_xxxx 
 reg [31: 0] AD_REG;
 reg AD_RW;
+reg TRANSATION;
+reg R;
+reg W;
+
+
 
 /*################ INOUT CONTROL ###############*/
-assign AD = AD_RW? AD_REG: 32'hzzzz_zzzz;  
+assign AD = AD_RW? AD_REG: 8'hzzzz_zzzz;  
 
 
 
 integer i;
-initial begin: DEVICE_MEM_INIT
+initial begin
+	TRANSATION = 1'b1;
     DEVSEL = 1'b1;
     DEVICE_AD = 8'h0000_0000;
     INDEX = 0;
@@ -54,7 +60,8 @@ initial begin: DEVICE_MEM_INIT
 	AD_RW = 1;
 	AD_REG = 8'h0000_0000;
 	TRDY = 1'b1;
-	
+	R = 1'b1;
+	W = 1'b1;
 
     for(i = 0; i < 100; i = i + 1) 
 	begin
@@ -63,48 +70,74 @@ initial begin: DEVICE_MEM_INIT
     end
 end
 
-// I will initialize signals to defaults in Device_tb.v 
 
+always @(negedge CLK)
+begin
+	if(!FRAME && !IRDY && !TRANSACTION)
+	begin
+		TRDY = 1'b0;
+		DEVSEL = 1'b0;
+	end
+	else
+	begin
+		TRDY = 1'b1;
+		DEVSEL = 1'b1;
+		TRANSACTION = 1'b1;
+		R = 1'b1;
+		W = 1'b1;
+	end
+end
 
 always @(posedge CLK)
 begin: MAIN
-    if(!FRAME && !IRDY)
+    if(!FRAME)
     begin: START_TRANSACTION
-		TRDY <= 1'b1;
-		DEVSEL <= 1'b1;
+	
 		$display("hey iam in frame");
-        if (AD == DEVICE_AD)
-		
-        begin: DEVICE_DECODED
+        if (TRANSACTION && AD == DEVICE_AD)
+		begin
 			$display("hey iam in decoding");
-            DEVSEL <= 1'b0;
-            case(CBE)
-                4'b0111: begin: START_WRITE
-                    AD_RW = 1'b1;
-                    $display("hey iam in write");
-                    TRDY <= 1'b0;
-                    //DEVICE_BUF <= AD; // Taking the bus's data
-                    DEVICE_MEM[INDEX] <= AD;
-                    INDEX = INDEX + 1; // why <= doesnot work,21w solved with =
-                    INDEX = (INDEX > 99)?0: INDEX; // IF I REMOVE FALSE FIELD WHAT WILL HAPPEN
-     
-                end
-                4'b0110: begin: START_READ
-                    $display("hey iam in read");
-                    TRDY <= 1'b0;
-                    AD_RW = 1'b1;
-                    AD_REG <= DEVICE_MEM[1]; // I need to put data on the bus	
-                    
-                end
-                default: $display("ERROR IN CBE");
-            endcase
-        end
+			TRANSACTION = 1'b0;
+		end
 
+		begin
+			if(CBE == 4'b0111 && W)
+			begin
+				W = 1'b0; 
+			end
+			else if(!W)
+			begin
+				if(!IRDY && !TRDY)
+				begin
+					AD_RW = 1'b1;
+                    INDEX = (INDEX > 99)?0: INDEX;
+					// Store word in mem
+     				DEVICE_MEM[INDEX] <= (CBE[3])? AD[7:0]: DEVICE_MEM[INDEX];
+                    INDEX = INDEX + 1; 
+					DEVICE_MEM[INDEX] <= (CBE[2])? AD[15:8]: DEVICE_MEM[INDEX];
+                    INDEX = INDEX + 1; 
+					DEVICE_MEM[INDEX] <= (CBE[1])? AD[23:16]: DEVICE_MEM[INDEX];
+                    INDEX = INDEX + 1; 
+     				DEVICE_MEM[INDEX] <= (CBE[0])? AD[31:24]: DEVICE_MEM[INDEX];
+                    INDEX = INDEX + 1;
+
+				end
+			end
+			else if(CBE == 4'b0110 && R)
+			begin
+				R = 1'b0;
+			end
+			else if(!R)
+			begin
+				if(!IRDY && !TRDY)
+				begin
+					AD_RW = 1'b1;
+                    AD_REG <= DEVICE_MEM[0]; // I need to put data on the bus	
+				end
+			end
+		end
     end
-	else begin
-		TRDY <= 1'b1;
-		DEVSEL <= 1'b1;
-	end
+
 end
 endmodule
 
