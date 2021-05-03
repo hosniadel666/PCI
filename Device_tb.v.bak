@@ -46,7 +46,6 @@ initial
 begin
     IRDY_tb = 1'b1;
     AD_REG_tb = 32'h0000_0000;
-    TRDY_tb = 1'b1;
     FRAME_tb = 1'b1;
     RST_tb = 1'b1;
 end

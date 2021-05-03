@@ -51,7 +51,10 @@ initial begin: DEVICE_MEM_INIT
     DEVICE_AD = 8'h0000_0000;
     INDEX = 0;
     DEVICE_BUF = 0; 
-    AD_RW = 1;
+	AD_RW = 1;
+	AD_REG = 8'h0000_0000;
+	TRDY = 1'b1;
+	
 
     for(i = 0; i < 100; i = i + 1) 
 	begin
@@ -62,32 +65,33 @@ end
 // I will initialize signals to defaults in Device_tb.v 
 
 
-always @(posedge CLK or RST)
+always @(posedge CLK)
 begin: MAIN
-    if(!FRAME && RST && !IRDY)
+    if(!FRAME && !IRDY)
     begin: START_TRANSACTION
 		$display("hey iam in frame");
         if (AD == DEVICE_AD)
+		TRDY <= 1'b1;
         begin: DEVICE_DECODED
 			$display("hey iam in decoding");
             DEVSEL <= 1'b0;
             case(CBE)
                 4'b0111: begin: START_WRITE
-                    AD_RW = 0;
+                    AD_RW = 1'b0;
                     $display("hey iam in write");
                     TRDY <= 1'b0;
                     DEVICE_BUF <= AD; // Taking the bus's data
                     DEVICE_MEM[INDEX] <= DEVICE_BUF;
-                    INDEX = INDEX + 1; // why <= doesnot work solved with =
+                    INDEX = INDEX + 1; // why <= doesnot work,21w solved with =
                     INDEX = (INDEX > 99)?0: INDEX; // IF I REMOVE FALSE FIELD WHAT WILL HAPPEN
                     TRDY <= 1'b1;
                 end
                 4'b0110: begin: START_READ
                     $display("hey iam in read");
                     TRDY <= 1'b0;
+                    AD_RW = 1'b1;
                     AD_REG <= DEVICE_MEM[1]; // I need to put data on the bus	
-                    AD_RW = 1;
-                    TRDY <= 1'b1;
+                    
                 end
                 default: $display("ERROR IN CBE");
             endcase

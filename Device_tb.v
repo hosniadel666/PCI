@@ -38,7 +38,7 @@ end
 
 always
 begin: GENERATE_CLK
-    #1 // f = ??
+    #5 // f = ??
     CLK_tb = ~CLK_tb;
 end
 
