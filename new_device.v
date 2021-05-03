@@ -11,7 +11,7 @@ module Device(FRAME,
               TRDY,   // Target ready(Active Low)
               DEVSEL, // Device select(Active Low)
               STOP,   // Request to stop transaction (Active Low)
-              PAR     // Parity 
+              PAR,    // Parity 
               SERR,   // System error
               PERR    // Parity error
               );
@@ -40,6 +40,8 @@ module Device(FRAME,
     reg [1:0]  INDEX_WRITE;  // used as pointer in case of write operation
     reg [1:0]  INDEX_READ;  // used as pointer in case of read operation
     reg [1:0]  INDEX_BUFFER;  // used as pointer in case of useing internal buffer
+    reg [31:0] OUTPUT_BUFFER;
+    reg AD_OUTPUT_EN;
     
     /**************** PARAMETERS *****************/
     parameter BASE_AD  = 32'hFFFF0000;     // Device base address
@@ -88,25 +90,30 @@ module Device(FRAME,
     reg FIRST_DATA_PHASE;
     always @(posedge CLK)
     begin
-        if (TRANSACTION_START) begin
+        if (TRANSACTION_START) 
+        begin
             ADRESS_BUFF <= AD;
             // We work on 32bit aligend address so we ignore
             // the first two bits
             COMMAND_BUFF     <= CBE;
             FIRST_DATA_PHASE <= 1;
         end
-        else begin
+        else 
+        begin
             FIRST_DATA_PHASE <= 0;
         end
     end
     
     // check of supported brust modes
     reg TARGET_ABORT;
-    always @(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
+        begin
             TARGET_ABORT <= 0;
         end
-        else begin
+        else 
+        begin
             if (TRANSACTION_START & ((AD - BASE_AD) != 2'b00))
             // unsupported burst mode
             // Disconnect with data
@@ -128,17 +135,16 @@ module Device(FRAME,
     // once it's low it won't be up until the end of the transcation
     wire DISCONNECT = TARGET_ABORT & ~IRDY;
     reg TRANSACTION_READY;
-    always @(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
             TRANSACTION_READY <= 1;
-        end
-        else begin
+        else 
             case (TRANSACTION_READY)
                 1'b1: TRANSACTION_READY <= ~DISCONNECT;
                 1'b0: if (TRANSACTION_END | FRAME)
                 TRANSACTION_READY <= 1'b1;
             endcase
-        end
     end
     
     // Disconnect without data in case of unsupported opeartion
@@ -149,11 +155,14 @@ module Device(FRAME,
                          (CBE == MEM_WRITE_INVAL_C);
     
     reg DISCONNECT_WITHOUT_DATA;
-    always @(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
+        begin
             DISCONNECT_WITHOUT_DATA <= 0;
         end
-        else begin
+        else 
+        begin
             // TODO: Modify to all unsupported operations
             if (TRANSACTION_START & ~VAILD_COMMEND)
             // unsupported operation
@@ -179,7 +188,8 @@ module Device(FRAME,
     // TRANSACTION is up on every transation on the bus
     // DEVICE_TRANSACTION is up in just our transation
     reg DEVICE_TRANSACTION;
-    always @(posedge CLK or negedge REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
         if (~REST)
             DEVICE_TRANSACTION <= 0;
         else
@@ -199,7 +209,8 @@ module Device(FRAME,
     // to tri-state it after the transation ends to be used
     // by other slaves on the bus
     reg DEVSEL_BUFF;
-    always @(posedge CLK or negedge REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
         if (~REST)
             DEVSEL_BUFF <= 0;
         else
@@ -224,7 +235,8 @@ module Device(FRAME,
                   (DISCONNECT & COMMOND_WRITE) |
                   (~TRANSACTION_READY & COMMOND_READ);
     reg TRDY_BUFF;
-    always @(posedge CLK or negedge REST) begin
+    always @(posedge CLK or negedge REST) 
+    begin
         if (~REST)
             TRDY_BUFF <= 0;
         else
@@ -235,13 +247,15 @@ module Device(FRAME,
     end
     
     // Asserting on negtive edge
-    always @(negedge CLK or negedge REST) begin
+    always @(negedge CLK or negedge REST) 
+    begin
         if (~REST) begin
             TRDY_INT   <= 1;
             DEVSEL_INT <= 1;
             STOP_INT   <= 1;
         end
-        else begin
+        else 
+        begin
             TRDY_INT   <= ~(TRDY_BUFF & DEVICE_READY & ~DISCONNECT_WITHOUT_DATA) ;
             DEVSEL_INT <= ~(DEVSEL_BUFF);
             STOP_INT   <= ~(TARGET_ABORT | DISCONNECT_WITHOUT_DATA);
@@ -262,7 +276,8 @@ module Device(FRAME,
     // notoice that we used a wire with DATA_WRITE as we write
     // at the postive edge already
     reg DATA_READ;
-    always @(posedge CLK) begin
+    always @(posedge CLK) 
+    begin
         DATA_READ <= ~DEVSEL_INT & COMMOND_READ & ~FRAME & ~IRDY & ~TRDY_INT & TRANSACTION_READY;
     end
 
@@ -281,21 +296,25 @@ module Device(FRAME,
     reg CHECK_PARITY_ADD;
     reg SERR_BUFF;
     reg ADDRESS_PAR;
-    always@(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always@(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
+        begin
             CHECK_PARITY_ADD <= 0;
             SERR_BUFF        <= 1;
             ADDRESS_PAR      <= 0;
         end
         else begin
-            if (CHECK_PARITY_ADD) begin
+            if (CHECK_PARITY_ADD) 
+            begin
                 if (PAR != ADDRESS_PAR)
                     SERR_BUFF <= 0;
                 
                 CHECK_PARITY_ADD <= 0;
             end
             
-            if (TRANSACTION_START & TARGETED) begin
+            if (TRANSACTION_START & TARGETED) 
+            begin
                 ADDRESS_PAR      <= PAR_ALL;
                 CHECK_PARITY_ADD <= 1;
             end
@@ -308,29 +327,36 @@ module Device(FRAME,
     reg PERR_BUFF;
     reg DATA_PAR;
     reg DEASSERT_FLAG; // used to deassert PERR after two cycle of assertion
-    always@(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always@(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
+        begin
             CHECK_PARITY_DAT <= 0;
             PERR_BUFF        <= 1;
             DATA_PAR         <= 0;
             DEASSERT_FLAG    <= 0;
         end
-        else begin
+        else 
+        begin
             // Check the parity of the last phase
-            if (CHECK_PARITY_DAT) begin
-                if (PAR != DATA_PAR) begin
+            if (CHECK_PARITY_DAT) 
+            begin
+                if (PAR != DATA_PAR) 
+                begin
                     PERR_BUFF <= 0; 
                     DEASSERT_FLAG <= 0;
                 end
                 CHECK_PARITY_DAT <= 0;
             end
             // clac the parity in case of writing
-            if (DATA_WRITE) begin
+            if (DATA_WRITE) 
+            begin
                 DATA_PAR         <= PAR_ALL;
                 CHECK_PARITY_DAT <= 1;
             end
             // deasset PERR after two cycles
-            if(~PERR_BUFF) begin
+            if(~PERR_BUFF) 
+            begin
                 if(DEASSERT_FLAG)
                     PERR_BUFF <= 1;
                 else
@@ -341,16 +367,17 @@ module Device(FRAME,
 
     // Deriving PERR
     reg PERR_OE;
-    always@(posedge CLK or negedge REST) begin
-        if (~REST) begin
+    always@(posedge CLK or negedge REST) 
+    begin
+        if (~REST) 
             PERR_OE <= 0;
-        end
-        else begin
+        else 
+        begin
             case(PERR_OE)
             1'b0: PERR_OE <= DATA_WRITE;
             1'b1: if(TRANSACTION_END)
             PERR_OE <= 0;
-        endcase
+            endcase
         end
     end
     
@@ -358,12 +385,15 @@ module Device(FRAME,
     reg SERR_INT;
     reg PERR_INT;
     reg [2:0] PERR_OE_SR;
-    always@(negedge CLK or negedge REST) begin
-        if (~REST) begin
+    always@(negedge CLK or negedge REST) 
+    begin
+        if (~REST) 
+        begin
             SERR_INT <= 1;
             PERR_INT <= 1;
         end
-        else begin
+        else 
+        begin
             SERR_INT <= SERR_BUFF;
             PERR_INT <= PERR_BUFF;
             PERR_OE_SR[0] <= PERR_OE;
@@ -379,7 +409,8 @@ module Device(FRAME,
     /*************  PARITY GENERATION ************/
     // get the parity at the postive edge
     reg PAR_OUT;
-    always@(posedge CLK or negedge REST) begin
+    always@(posedge CLK or negedge REST) 
+    begin
         if (~REST)
             PAR_OUT <= 0;
         else
@@ -389,7 +420,8 @@ module Device(FRAME,
     // delay it to the negtive edge
     // to be seen at the bus at the next cycle
     reg PAR_INT;
-    always@(negedge CLK or negedge REST) begin
+    always@(negedge CLK or negedge REST) 
+    begin
         if (~REST)
             PAR_INT <= 0;
         else
@@ -398,13 +430,13 @@ module Device(FRAME,
     
     // parity is enabeled one cycle after the data
     reg PAR_OUTPUT_EN;
-    always @(negedge CLK or negedge REST) begin
-        if (~REST) begin
+    always @(negedge CLK or negedge REST) 
+    begin
+        if (~REST) 
             PAR_OUTPUT_EN <= 0;
-        end
-        else begin
+        else 
             PAR_OUTPUT_EN <= AD_OUTPUT_EN;
-        end
+
     end
     
     assign PAR = PAR_OUTPUT_EN ? PAR_INT : 1'hZ;
@@ -418,18 +450,22 @@ module Device(FRAME,
     
     always @(posedge CLK or negedge REST)
     begin
-        if (~REST) begin
+        if (~REST) 
+        begin
             INDEX_WRITE  <= 0;
             INDEX_BUFFER <= 0;
             DEVICE_READY <= 1;
         end
-        else begin
+        else 
+        begin
             if (TRANSACTION_START)
                 INDEX_WRITE <= (AD - BASE_AD) >> 2;
-            else begin
+            else 
+            begin
                 if (DATA_WRITE)
                 begin
-                    if (~DEVICE_READY) begin
+                    if (~DEVICE_READY)
+                    begin
                         INTERNAL_BUFFER[INDEX_BUFFER]     <= MEM[0];
                         INTERNAL_BUFFER[INDEX_BUFFER + 1] <= MEM[1];
                         INTERNAL_BUFFER[INDEX_BUFFER + 2] <= MEM[2];
@@ -437,7 +473,8 @@ module Device(FRAME,
                         INDEX_BUFFER                      <= INDEX_BUFFER + 4;
                         DEVICE_READY                      <= 1;
                     end
-                    else begin
+                    else 
+                    begin
                         // if we reached the last byte reserve the next
                         // cycle for moveing the data to the buffer
                         if (INDEX_WRITE == 3)
@@ -458,37 +495,40 @@ module Device(FRAME,
     /*************************************************
      *               READ OPERATION                  *
      *************************************************/
-     
-    reg [31:0] OUTPUT_BUFFER;
-    reg AD_OUTPUT_EN;
+
     
-    always @(negedge CLK or negedge REST) begin
-        if (~REST) begin
+    always @(negedge CLK or negedge REST) 
+    begin
+        if (~REST) 
             OUTPUT_BUFFER <= 32'hFFFF_FFFF;
-        end
-        else begin
+        else 
             OUTPUT_BUFFER <= MEM[INDEX_READ];
-        end
     end
-    
+
     always @(negedge CLK or negedge REST)
     begin
-        if (~REST) begin
+        if (~REST) 
+        begin
             AD_OUTPUT_EN <= 0;
             INDEX_READ   <= 0;
         end
-        else begin
-            if (FIRST_DATA_PHASE) begin
+        else 
+        begin
+            if (FIRST_DATA_PHASE) 
+            begin
                 INDEX_READ <= (ADRESS_BUFF - BASE_AD) >> 2;
             end
-            else begin
-                if (DATA_READ) begin
+            else 
+            begin
+                if (DATA_READ) 
+                begin
                     // the read opeation doeesn't have side effects
                     // so we only wrap the index to zero
                     AD_OUTPUT_EN <= 1;
                     INDEX_READ   <= INDEX_READ + 1;
                 end
-                else begin
+                else 
+                begin
                     AD_OUTPUT_EN <= 0;
                 end
             end
