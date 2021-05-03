@@ -58,7 +58,8 @@ initial begin: DEVICE_MEM_INIT
 
     for(i = 0; i < 100; i = i + 1) 
 	begin
-        DEVICE_MEM[i] = (1 << 32) - 1;
+        // DEVICE_MEM[i] = (1 << 32) - 1;
+		DEVICE_MEM[i] = 0;
     end
 end
 
@@ -69,22 +70,24 @@ always @(posedge CLK)
 begin: MAIN
     if(!FRAME && !IRDY)
     begin: START_TRANSACTION
+		TRDY <= 1'b1;
+		DEVSEL <= 1'b1;
 		$display("hey iam in frame");
         if (AD == DEVICE_AD)
-		TRDY <= 1'b1;
+		
         begin: DEVICE_DECODED
 			$display("hey iam in decoding");
             DEVSEL <= 1'b0;
             case(CBE)
                 4'b0111: begin: START_WRITE
-                    AD_RW = 1'b0;
+                    AD_RW = 1'b1;
                     $display("hey iam in write");
                     TRDY <= 1'b0;
-                    DEVICE_BUF <= AD; // Taking the bus's data
-                    DEVICE_MEM[INDEX] <= DEVICE_BUF;
+                    //DEVICE_BUF <= AD; // Taking the bus's data
+                    DEVICE_MEM[INDEX] <= AD;
                     INDEX = INDEX + 1; // why <= doesnot work,21w solved with =
                     INDEX = (INDEX > 99)?0: INDEX; // IF I REMOVE FALSE FIELD WHAT WILL HAPPEN
-                    TRDY <= 1'b1;
+     
                 end
                 4'b0110: begin: START_READ
                     $display("hey iam in read");
@@ -98,6 +101,10 @@ begin: MAIN
         end
 
     end
+	else begin
+		TRDY <= 1'b1;
+		DEVSEL <= 1'b1;
+	end
 end
 endmodule
 
